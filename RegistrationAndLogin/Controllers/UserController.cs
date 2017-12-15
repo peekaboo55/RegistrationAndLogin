@@ -87,7 +87,7 @@ namespace RegistrationAndLogin.Controllers
             {
                 dc.Configuration.ValidateOnSaveEnabled = false; // This line i have added here to acoid
                                                                 //Confirm Password does not match issue on save changes
-                var v = dc.Users.Where(a => a.ActivationCode == new Guid(id).FirstOrDefault());
+                var v = dc.Users.Where(a => a.ActivationCode == new Guid(id)).FirstOrDefault();
                 if (v != null)
                 {
                     v.IsEmailVerified = true;
@@ -177,19 +177,32 @@ namespace RegistrationAndLogin.Controllers
         }
 
         [NonAction]
-        public void SendVerificationLinkEmail(string emailID, string activationCode)
+        public void SendVerificationLinkEmail(string emailID, string activationCode, string emailFor = "VerifyAccount")
         {
-            var verifyUrl = "/User/VerifyAccount/" + activationCode;
+            var verifyUrl = "/User/"+emailFor+"/" + activationCode;
             var link = Request.Url.AbsoluteUri.Replace(Request.Url.PathAndQuery, verifyUrl);
 
             var fromEmail = new MailAddress("dotnetawesom@gmail.com", "Dornet Awesome");
             var toEmail = new MailAddress(emailID);
             var fromEmailPassword = "************"; //Replace with actual password
-            string subject = "Your account is successfully created!";
 
-            string body = "<br></br> We are excited to tell you that your Dotnet Awesom account is " + 
-                " Successfully create. Please click on the bellow link to verify your account" +
-                " <br></br><a href='" + link + "'>" + link + "</a> ";
+            string subject = "";
+            string body = "";
+            if (emailFor == "VerifyAccount")
+            {
+                subject = "Your account is successfully created!";
+
+                body = "<br></br> We are excited to tell you that your Dotnet Awesom account is " + 
+                    " Successfully create. Please click on the bellow link to verify your account" +
+                    " <br></br><a href='" + link + "'>" + link + "</a> ";
+            }
+            else if(emailFor == "ResetPassword")
+            {
+                subject = "Reset Password";
+                body = "Hi,<br/><br/>We got request for reset your account password. Please click on the below link to reset password" +
+                    "<br/><br/><a ahref="+link+">Reset Password link<a/>";
+            }
+
 
             var smtp = new SmtpClient
             {
@@ -213,6 +226,93 @@ namespace RegistrationAndLogin.Controllers
         public ActionResult ForgotPassword()
         {
             return View();
+        }
+
+        [HttpPost]
+        public ActionResult ForgotPassword(string EmailID)
+        {
+            //Verify Email ID
+
+            //Generate Reset Password Link
+
+            //Send Email
+            string message = "";
+            bool status = false;
+
+            using (MyDatabaseEntities dc = new MyDatabaseEntities())
+            {
+                var account = dc.Users.Where(a => a.EmailID == EmailID).FirstOrDefault();
+                if (account != null)
+                {
+                    //Send emaik for reset password
+                    string resetCode = Guid.NewGuid().ToString();
+                    SendVerificationLinkEmail(account.EmailID, resetCode, "ResetPassword");
+                    account.ResetPasswordCode = resetCode;
+                    //This line I have added here to acoid confirm password not match issue , as we had added a confirm password property
+                    //in our model class in part user.cs
+                    dc.Configuration.ValidateOnSaveEnabled = false;
+                    dc.SaveChanges();
+                    message = "Reset password link has been sent to your email id.";
+
+                }
+                else
+                {
+                    message = "Account not found";
+                }
+            }
+            ViewBag.Message = message;
+            return View();
+        }
+
+        public ActionResult ResetPassword(string id)
+        {
+            //Verify the reset password link
+            //Find account associated  with this link
+            //redirect to reset password page
+
+            using (MyDatabaseEntities dc = new MyDatabaseEntities())
+            {
+                var user = dc.Users.Where(a => a.ResetPasswordCode == id).FirstOrDefault();
+                if (user != null)
+                {
+                    ResetPasswordModel model = new ResetPasswordModel();
+                    model.ResetCode = id;
+                    return View(model);
+
+                }
+                else
+                {
+                    return HttpNotFound();
+                }
+            }                
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult ResetPassword(ResetPasswordModel model)
+        {
+            var message = "";
+            if (ModelState.IsValid)
+            {
+                using (MyDatabaseEntities dc = new MyDatabaseEntities())
+                {
+                    var user = dc.Users.Where(a => a.ResetPasswordCode == model.ResetCode).FirstOrDefault();
+                    if (user != null)
+                    {
+                        user.Password = Crypto.Hash(model.NewPassword);
+                        user.ResetPasswordCode = "";
+                        dc.Configuration.ValidateOnSaveEnabled = false;
+                        dc.SaveChanges();
+                        message = "New password updated successfully";
+                    }
+                }
+            }
+            else
+            {
+                message = "Something invalid";
+            }
+            ViewBag.Message = message;
+            return View(model);
         }
     } 
 }
