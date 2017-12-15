@@ -209,5 +209,10 @@ namespace RegistrationAndLogin.Controllers
             })
                 smtp.Send(message);
         }
+
+        public ActionResult ForgotPassword()
+        {
+            return View();
+        }
     } 
 }
